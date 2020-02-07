@@ -1,0 +1,100 @@
+#[Command::setup_qdisc]
+#type = pre
+#exec = ./setup_qdisc.sh ${qdisc}
+#essential = yes
+
+[Command::move_data]
+type=post
+exec = mv ${batch_time}-${batch_name}-data.csv batch-${batch_time}-${batch_title}/${batch_name}
+
+[Batch::global]
+extended_metadata = yes
+debug_error = yes
+debug_log = yes
+title = ${batch_title}
+output_path = batch-${batch_time}-${batch_title}/${batch_name}
+#data_dir = batch-${batch_time}-${batch_title}/${batch_name}
+ip_version = 4
+length = 30
+hosts = 192.168.11.176 #192.168.1.136 #192.168.11.101
+batch_title = testbed_v0_1
+repetitions = 1
+pause = 5
+#commands = move_data
+abstract = yes
+ecn = noecn
+
+[Batch::rrul]
+inherits = global
+test_name = rrul_be_nflows
+disabled = no
+abstract = yes
+format=csv
+output = ${batch_time}-${batch_name}-data.csv
+commands = move_data
+
+[Batch::rrul_null]
+inherits = rrul
+test_parameters=download_streams = 0; upload_streams = 0;
+
+
+[Batch::rrul_1stream]
+inherits = rrul
+test_parameters=download_streams = 1; upload_streams = 1;
+
+
+[Batch::rrul_2stream]
+inherits = rrul
+test_parameters=download_streams = 2; upload_streams = 2;
+
+[Batch::rrul_4stream]
+inherits = rrul
+test_parameters=download_streams = 4; upload_streams = 4;
+
+[Batch::rrul_8stream]
+inherits = rrul
+test_parameters=download_streams = 8; upload_streams = 8;
+
+[Batch::rrul_16stream]
+inherits = rrul
+test_parameters=download_streams = 16; upload_streams = 16;
+
+[Batch::rrul_32stream]
+inherits = rrul
+test_parameters=download_streams = 32; upload_streams = 32;
+
+[Batch::rrul_std]
+inherits = global
+test_name = rrul
+disabled = no
+format=csv
+output = ${batch_time}-${batch_name}-data.csv
+commands = move_data
+
+[Batch::rrul_std_down]
+inherits = global
+test_name = rrul_down
+disabled = no
+format=csv
+output = ${batch_time}-${batch_name}-data.csv
+commands = move_data
+
+[Batch::rrul_irl]
+inherits = global
+test_parameters=download_streams = 1; upload_streams = 1;
+test_name = rrul_be_nflows_test
+disabled = no
+format=csv
+output = ${batch_time}-${batch_name}-data.csv
+commands = move_data
+
+[Batch::rrul_packetloss]
+inherits = global
+test_parameters=download_streams = 1; upload_streams = 1;
+test_name = voip-rrul
+disabled = no
+format=csv
+output = ${batch_time}-${batch_name}-data.csv
+commands = move_data
+
+
