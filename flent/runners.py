@@ -1497,7 +1497,7 @@ class IrttRunner(ProcessRunner):
     _irtt = {}
 
     def __init__(self, host, length, interval=None, ip_version=None,
-                 local_bind=None, marking=None, multi_results=False,
+                 local_bind=None, marking=None, multi_results=True,
                  sample_freq=0, data_size=None, **kwargs):
         self.host = host
         self.interval = interval
