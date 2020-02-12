@@ -1518,7 +1518,7 @@ class IrttRunner(ProcessRunner):
         return value/10**9
 
     def parse(self, output, error=""):
-        result = {'rtt': [], 'delay': [], 'jitter': [], 'loss': []}
+        result = {'rtt': [], 'delay': [], 'jitter': [], 'loss': [], 'delay_up': [], 'delay_down': []}
         raw_values = []
         try:
             data = json.loads(output)
@@ -1573,6 +1573,8 @@ class IrttRunner(ProcessRunner):
 
                     if dp['t'] >= next_sample:
                         result['rtt'].append([dp['t'], dp['val']])
+                        result['delay_up'].append([dp['t'], dp['owd_up']])
+                        result['delay_down'].append([dp['t'], dp['owd_down']])
                         # delay and jitter are for compatibility with the D-ITG
                         # VoIP mode
                         result['delay'].append([dp['t'], dp['owd_up']])
