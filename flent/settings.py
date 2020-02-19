@@ -336,6 +336,14 @@ test_group.add_argument(
     "runners. Can be specified multiple times.")
 
 test_group.add_argument(
+    "--remote-sta",
+    action="append", type=unicode, dest="REMOTE_STA", default=[],
+    help="Remote STAs to connect to for running the same tests on multiple STAs. This works by simply "
+    "prepending 'ssh STA-HOSTNAME' to the runner command, so it relies on the same "
+    "binaries being in the same places on both machines, and won't work for all "
+    "runners. Can be specified multiple times.")
+
+test_group.add_argument(
     "-l", "--length",
     action="store", type=int, dest="LENGTH", default=60,
     help="Base test length (some tests may add some time to this).")

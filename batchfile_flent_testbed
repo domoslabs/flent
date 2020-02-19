@@ -15,8 +15,8 @@ title = ${batch_title}
 output_path = batch-${batch_time}-${batch_title}/${batch_name}
 #data_dir = batch-${batch_time}-${batch_title}/${batch_name}
 ip_version = 4
-length = 30
-hosts = 192.168.11.176 #192.168.1.136 #192.168.11.101
+length = 20
+hosts = 192.168.11.176 #192.168.1.136#192.168.11.101
 batch_title = testbed_v0_1
 repetitions = 1
 pause = 5
@@ -64,8 +64,20 @@ inherits = rrul
 test_parameters=download_streams = 32; upload_streams = 32;
 
 [Batch::rrul_std]
+#remote_hosts = 0 = root@192.168.1.7; 1 = root@192.168.1.7; 2 = root@192.168.1.7; 3 = root@192.168.1.7;
+#remote_sta = root@192.168.1.7, root@192.168.1.7;
 inherits = global
 test_name = rrul
+disabled = no
+format=csv
+output = ${batch_time}-${batch_name}-data.csv
+commands = move_data
+
+[Batch::rrul_std_nsta]
+#remote_hosts = 0 = root@192.168.1.7; 1 = root@192.168.1.7; 2 = root@192.168.1.7; 3 = root@192.168.1.7;
+remote_sta = localhost, root@192.168.1.190;
+inherits = global
+test_name = rrul_nSTA
 disabled = no
 format=csv
 output = ${batch_time}-${batch_name}-data.csv
