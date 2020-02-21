@@ -1,0 +1,109 @@
+#Setting up your own Command
+#[Command::name_of_command]
+#type = pre/post - determines if the command is executed before or after the batch
+#exec = insert you command here (i.e., ls, echo "starting test", etc.)
+essential = yes/no - determines if command must execute correctly or not
+
+[Command::move_data]    #Command used to move the csv output to appropriate folder
+type=post
+exec = mv ${batch_time}-${batch_name}-data.csv batch-${batch_time}-${batch_title}/${batch_name}
+
+#Setting up your own Batch
+#[Batch::name_of_batch] - note that this is the name used to call the batch when running flent with -B
+#inherits = name_of_previous_batch - This can usually just be global. Lets batch inherit properties from other batches i.e. length,test_name etc.
+#test_name = name_of_test - The name of all the tests in flent can be found under the test folder in the flent repository.
+#length = number - Determines number of seconds that the test runs for. (usually will add around 10 sec)
+#commands = any commands you've written - Comma separate to add more commands if wanted.
+#abstract = yes/no - If abstract the batch will not execute but can still be inherited.
+#test_parameters = parameter = number/string - Used to add a number of parameters to your tests. See https://flent.org/tests.html for more info.
+
+
+[Batch::global]
+extended_metadata = yes
+debug_error = yes
+debug_log = yes
+title = ${batch_title}
+output_path = batch-${batch_time}-${batch_title}/${batch_name}
+ip_version = 4
+length = 30
+hosts = 192.168.11.176     #Edit this ip to your local server ip before running
+batch_title = testbed_v0_1
+repetitions = 1
+pause = 5
+abstract = yes
+ecn = noecn
+
+[Batch::rrul_be_nflows]
+inherits = global
+test_name = rrul_be_nflows
+disabled = no
+abstract = yes
+format=csv
+output = ${batch_time}-${batch_name}-data.csv
+commands = move_data
+
+[Batch::rrul_null]
+inherits = rrul_be_nflows
+test_parameters=download_streams = 0; upload_streams = 0;
+
+
+[Batch::rrul_1stream]
+inherits = rrul_be_nflows
+test_parameters=download_streams = 1; upload_streams = 1;
+
+
+[Batch::rrul_2stream]
+inherits = rrul_be_nflows
+test_parameters=download_streams = 2; upload_streams = 2;
+
+[Batch::rrul_4stream]
+inherits = rrul_be_nflows
+test_parameters=download_streams = 4; upload_streams = 4;
+
+[Batch::rrul_8stream]
+inherits = rrul_be_nflows
+test_parameters=download_streams = 8; upload_streams = 8;
+
+[Batch::rrul_16stream]
+inherits = rrul_be_nflows
+test_parameters=download_streams = 16; upload_streams = 16;
+
+[Batch::rrul_32stream]
+inherits = rrul_be_nflows
+test_parameters=download_streams = 32; upload_streams = 32;
+
+[Batch::rrul_std]
+inherits = global
+test_name = rrul
+disabled = no
+format=csv
+output = ${batch_time}-${batch_name}-data.csv
+commands = move_data
+
+[Batch::rrul_std_down]
+inherits = global
+test_name = rrul_down
+disabled = no
+format=csv
+output = ${batch_time}-${batch_name}-data.csv
+commands = move_data
+
+[Batch::rrul_irl]
+inherits = global
+test_parameters=download_streams = 1; upload_streams = 1;
+test_name = rrul_be_nflows_test
+disabled = no
+format=csv
+output = ${batch_time}-${batch_name}-data.csv
+commands = move_data
+
+[Batch::rrul_packetloss]
+inherits = global
+test_parameters=download_streams = 1; upload_streams = 1;
+test_name = voip-rrul
+disabled = no
+format=csv
+output = ${batch_time}-${batch_name}-data.csv
+commands = move_data
+
+
