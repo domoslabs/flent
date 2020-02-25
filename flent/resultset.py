@@ -53,6 +53,7 @@ RECORDED_SETTINGS = (
     "NAME",
     "HOST",
     "HOSTS",
+    "REMOTE_STA",
     "TIME",
     "LOCAL_HOST",
     "TITLE",
