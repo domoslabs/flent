@@ -2375,6 +2375,71 @@ class NetstatRunner(ProcessRunner):
                 host=host)
 
 
+class DomosQosRunner(ProcessRunner):
+    """Runner for getting qos limit and latecy stats from /tmp/domosqos. Expects
+    iterations to be separated by '\n---\n and a timestamp to be present in the
+    form 'Time: xxxxxx.xxx' (e.g. the output of `date '+Time: %s.%N'`).
+    exp:
+    -1,00,6.27,42.40,100.00
+    Time: 1583427973.201683483
+    ---
+    -1,00,6.27,42.40,100.00
+    Time: 1583427974.201102307
+    ---
+    """
+    time_re = re.compile(r"^Time: (?P<timestamp>\d+\.\d+)", re.MULTILINE)
+    tcpext_header_re = re.compile(
+        r"^TcpExt: (?P<header>[A-Z][0-9a-zA-Z ]+)\n", re.MULTILINE)
+    tcpext_data_re = re.compile(r"^TcpExt: (?P<data>[0-9 ]+)\n", re.MULTILINE)
+
+    def __init__(self, interval, length, host='localhost', **kwargs):
+        self.interval = interval
+        self.length = length
+        self.host = host
+        super(DomosQosRunner, self).__init__(**kwargs)
+
+    def parse(self, output, error=""):
+        results = {}
+        parts = output.split("\n---\n")
+        for part in parts:
+            matches = {}
+            timestamp = self.time_re.search(part)
+            if timestamp is None:
+                continue
+            
+            timestamp = float(timestamp.group('timestamp'))
+            
+            lines=part.split("\n")
+
+            csvdata=lines[0].split(",")
+            for k, csvdatap in csvdata:
+                v = float(csvdatap)
+                results[k].append([timestamp, v])
+
+        return results
+
+    def check(self):
+        self.command = self.find_binary(self.interval,
+                                        self.length, self.host)
+        super(DomosQosRunner, self).check()
+
+    def find_binary(self, interval, length, host='localhost'):
+        script = os.path.join(DATA_DIR, 'scripts', 'domosqos.sh')
+        if not os.path.exists(script):
+            raise RunnerCheckError("Cannot find domosqos.sh.")
+
+        bash = util.which('bash')
+        if not bash:
+            raise RunnerCheckError("Capturing netstat requires a Bash shell.")
+
+        return "{bash} {script} -I {interval:.2f} -c {count:.0f} " \
+            "-H {host}".format(
+                bash=bash,
+                script=script,
+                interval=interval,
+                count=length // interval + 1,
+                host=host)
+
 class NullRunner(RunnerBase):
     pass
 
