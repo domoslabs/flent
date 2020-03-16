@@ -2377,6 +2377,63 @@ class NetstatRunner(ProcessRunner):
                 host=host)
 
 
+class DomqosRunner(ProcessRunner):
+    """
+    Runner for getting stats from domos-qosd.
+    """
+
+    def __init__(self, interval, length, sta, host='localhost', interface="wl0", **kwargs):
+        self.interval = interval
+        self.length = length
+        self.host = host
+        self.sta = sta
+        self.interface = interface
+        super(DomqosRunner, self).__init__(**kwargs)
+
+    def parse(self, output, error=""):
+        import ast
+        ignore = ["QOSTime","mac", "radio", "IP"]
+        results = {}
+        lines = output.splitlines()
+        h = ""
+        for line in lines:
+            if "QOSTime" in line:
+                h = line.split(',')
+                continue
+            if ',' in line and 'removing' not in line:
+                tup = line.split(',')
+                if h != "":
+                    tmp = []
+                    for i,x in enumerate(tup):
+                        if h[i] not in ignore:
+                            tmp.append(float(x))
+                    res = dict(zip([k for k in h if k not in ignore], tmp))
+                else:
+                    logger.warning("Warning: Found no header in domos-qosd output.")
+                res['t'] = float(tup[0])/1000000
+                v = float(tup[2])
+                k = h[2]
+                if k not in results:
+                    results[k] = [[res['t'], v]]
+                else:
+                    results[k].append([res['t'], v])
+                self._raw_values.append(res)
+        return results
+
+    def check(self):
+        self.command = self.find_binary(self.interval,
+                                        self.length, self.sta, self.host, self.interface)
+        super(DomqosRunner, self).check()
+
+    def find_binary(self, interval, length, sta, host, interface):
+        return "ssh {host} domos-qosd -c /etc/domos-qos-daemon.ini -p {sta_ip} -l -Y {interface} -y {sta_mac} -r {length} 2> /dev/null".format(
+                interval=interval,
+                sta_ip=sta[0],
+                sta_mac=sta[1].lower(),
+                length=(length + 10)*1000,
+                host=host,
+                interface=interface)
+
 class NullRunner(RunnerBase):
     pass
 
