@@ -149,6 +149,7 @@ def record_metadata(results, extended, hostnames):
         m['REMOTE_METADATA'][h]['LOCAL_HOST'] = get_command_output("hostname")
         m['REMOTE_METADATA'][h]['KERNEL_NAME'] = get_command_output("uname -s")
         m['REMOTE_METADATA'][h]['KERNEL_RELEASE'] = get_command_output("uname -r")
+        m['REMOTE_METADATA'][h]['KERNEL_INFO'] = get_command_output("uname -a")
         m['REMOTE_METADATA'][h]['MODULE_VERSIONS'] = get_module_versions()
         m['REMOTE_METADATA'][h]['SYSCTLS'] = get_sysctls()
         m['REMOTE_METADATA'][h]['EGRESS_INFO'] = get_egress_info(
@@ -168,6 +169,7 @@ def record_metadata(results, extended, hostnames):
             m['REMOTE_METADATA'][h]['IP_ADDRS'] = get_ip_addrs()
             m['REMOTE_METADATA'][h]['GATEWAYS'] = get_gateways()
             m['REMOTE_METADATA'][h]['WIFI_DATA'] = get_wifi_data()
+            m['REMOTE_METADATA'][h]['CPU_DATA'] = get_cpu_data()
 
 
 def record_postrun_metadata(results, extended, hostnames):
@@ -516,6 +518,22 @@ def get_module_versions():
             module_versions[m] = v
 
     return module_versions
+
+def get_cpu_data():
+    cpu_data = {}
+    unwanted_keys = ["Features", "Revision", "Serial"]
+    
+    output = get_command_output("cat /proc/cpuinfo")
+    if output is not None:
+        for line in output.splitlines():
+            parts = line.split(':')
+            if len(parts) < 2:
+                continue
+            k, v = parts[0], parts[1]
+            if "model name" in k:
+                cpu_data["model_name"] = v
+                break
+    return cpu_data
 
 
 def get_wifi_data():
