@@ -1297,7 +1297,13 @@ class Plotter(ArgParam):
             else:
                 logger.warn("Smoothing length longer than data series %s; "
                             "not smoothing", series['data'])
-
+        if 'ignore_zeros' in series:
+            last_val = 0
+            for i, x in enumerate(data[1]):
+                if x == 0:
+                    data[1][i] = last_val
+                else:
+                    last_val = x
         return data
 
 
@@ -1804,6 +1810,9 @@ class CdfPlotter(Plotter):
             axis.set_xlabel(config['axis_labels'][0])
         else:
             axis.set_xlabel(unit)
+        if 'xlim' in config:
+            l, r = config['xlim']
+            axis.set_xlim(l, r)
         axis.set_ylabel('Cumulative probability')
         axis.set_ylim(0, 1)
         axis.minorticks_on()
@@ -1851,7 +1860,7 @@ class CdfPlotter(Plotter):
             # round up to nearest value divisible by 10
             max_value += 10 - (max_value % 10)
 
-        if max_value > 0:
+        if max_value > 0 and not 'xlim' in config:
             axis.set_xlim(right=max(max_value, axis.get_xlim()[1]))
 
         if self.zero_y:
