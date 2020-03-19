@@ -1,0 +1,53 @@
+#[Command::setup_qdisc]
+#type = pre
+#exec = ./setup_qdisc.sh ${qdisc}
+#essential = yes
+
+[Command::move_data]
+type=post
+exec = mv ${batch_time}-${batch_name}-data.csv benchmark_results/batch-${batch_time}-${batch_title}/${batch_name}
+
+[Batch::global]
+extended_metadata = yes
+debug_error = yes
+debug_log = yes
+title = ${batch_title}
+output_path = batch-${batch_time}-${batch_title}/${batch_name}
+#data_dir = batch-${batch_time}-${batch_title}/${batch_name}
+ip_version = 4
+length = 60
+hosts = 192.168.1.115
+batch_title = testbed_v0_2
+repetitions = 1
+pause = 5
+commands = move_data
+abstract = yes
+ecn = noecn
+
+[Batch::rrul_nsta_global]
+inherits = global
+for_remote_sta = sta0, sta1, # sta3, #etc.
+abstract = yes
+format=csv
+output = ${batch_time}-${batch_name}-data.csv
+commands = move_data
+
+[Batch::rrul_std_nsta]
+inherits = rrul_nsta_global
+test_name = rrul_nSTA
+disabled = no
+
+[Batch::rrul_be_nsta]
+inherits = rrul_nsta_global
+test_name = rrul_be_nsta
+disabled = no
+
+[Arg::localhost]
+remote_sta = localhost
+
+[Arg::sta0]
+remote_sta = localhost
+
+[Arg::sta1]
+remote_sta = root@192.168.1.191
+
