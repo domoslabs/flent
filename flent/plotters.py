@@ -1034,11 +1034,17 @@ class Plotter(ArgParam):
            and self.legends:
 
             # Make sure we have a renderer to get size from
-            if not getattr(self.figure, '_cachedRenderer', None):
+            renderer = getattr(self.figure, '_cachedRenderer', None)
+            if not renderer:
                 self.figure.canvas.draw()
+                renderer = getattr(self.figure, '_cachedRenderer', None)
 
-            legend_width = max(
-                [l.get_window_extent().width for l in self.legends])
+            try:
+                legend_width = max(
+                    [l.get_window_extent(renderer).width for l in self.legends])
+            except Exception as e:
+                logger.debug("Error getting legend sizes: %s", e)
+                return
 
             canvas_width = self.figure.canvas.get_width_height()[0]
             for a in self.axes_iter():
@@ -1271,8 +1277,8 @@ class Plotter(ArgParam):
             if end <= 0:
                 end += results.meta("TOTAL_LENGTH")
 
-            min_idx = data[0].searchsorted(start, side='right')
-            max_idx = data[0].searchsorted(end, side='left')
+            min_idx = data[0].searchsorted(start, side='left')
+            max_idx = data[0].searchsorted(end, side='right')
 
             data = data[:, min_idx:max_idx]
 
@@ -1763,7 +1769,6 @@ class BarPlotter(BoxPlotter):
             if len(l) > self._max_label_length:
                 ticklabels[i] = l[:self._max_label_length] + "..."
 
-        axis.set_xticklabels(ticklabels, rotation=90, ha='center')
         axis.set_xlim(0, pos - 1)
         axis.set_xticks(ticks)
         axis.set_xticks([], minor=True)

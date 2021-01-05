@@ -41,7 +41,7 @@ from threading import Event
 
 from flent import util, transformers
 from flent.build_info import DATA_DIR
-from flent.util import classname, ENCODING, Glob
+from flent.util import classname, ENCODING, Glob, normalise_host
 from flent.loggers import get_logger
 
 try:
@@ -391,7 +391,7 @@ class ProcessRunner(RunnerBase, threading.Thread):
         super(ProcessRunner, self).__init__(**kwargs)
 
         self.delay = delay
-        self.remote_host = remote_host
+        self.remote_host = normalise_host(remote_host)
         self.units = units
         self.killed = False
         self.pid = None
@@ -595,30 +595,51 @@ class ProcessRunner(RunnerBase, threading.Thread):
 
         return float(output.split()[-1].strip())
 
-    def run_simple(self, args, kill=False, errmsg=None):
-        proc = subprocess.Popen(args,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE)
+    def run_simple(self, args, kill=None, errmsg=None):
+        if self.remote_host:
+            args = ['ssh', self.remote_host, ' '.join(args)]
+            if kill:
+                kill = max(kill, 1)
+        try:
+            proc = subprocess.run(args, stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE, timeout=kill)
+            out = proc.stdout.decode(ENCODING)
+            err = proc.stderr.decode(ENCODING)
+            ret = proc.returncode
+        except subprocess.TimeoutExpired as e:
+            out = e.stdout.decode(ENCODING) if e.stdout else ""
+            err = e.stderr.decode(ENCODING) if e.stderr else ""
+            ret = 1
 
-        if kill:
-            time.sleep(0.1)
-            proc.kill()
-
-        out, err = proc.communicate()
-        out = out.decode(ENCODING)
-        err = err.decode(ENCODING)
-
-        if proc.returncode != 0 and errmsg:
+        if ret != 0 and errmsg:
             raise RunnerCheckError(errmsg.format(err=err))
 
         return out, err
 
-    def parse_marking(self, marking, fmtstr):
-        # Try to convert netperf-style textual marking specs into integers
+    def _get_marking(self, marking):
+        mk = marking.upper()
+
+        if mk in MARKING_MAP:
+            mkval = MARKING_MAP[mk]
+        elif mk in self.settings.MARKING_NAMES:
+            mkval = self.settings.MARKING_NAMES[mk]
+        else:
+            try:
+                mkval = util.parse_int(marking)
+            except ValueError:
+                raise RuntimeError("Invalid marking: %s" % marking)
+
+        return "0x%x" % mkval
+
+    def parse_marking(self, marking, fmtstr, paired=False):
+        """Convert netperf-style textual marking specs into integers"""
         if marking is not None:
             try:
-                mk = marking.split(",")[0]
-                return fmtstr.format(MARKING_MAP[mk.upper()])
+                mk = marking.split(",")
+                if paired and len(mk) > 1:
+                    return fmtstr.format("{},{}".format(self._get_marking(mk[0]),
+                                                        self._get_marking(mk[1])))
+                return fmtstr.format(self._get_marking(mk[0]))
             except (AttributeError, KeyError):
                 return fmtstr.format(self.marking)
 
@@ -649,6 +670,7 @@ class DitgRunner(ProcessRunner):
 
         if not control_host:
             control_host = self.settings.CONTROL_HOST or self.settings.HOST
+        control_host = normalise_host(control_host)
 
         if not local_bind and self.settings.LOCAL_BIND:
             local_bind = self.settings.LOCAL_BIND[0]
@@ -661,7 +683,7 @@ class DitgRunner(ProcessRunner):
 
         self.test_args = test_args
         self.length = length
-        self.host = host
+        self.host = normalise_host(host)
         self.interval = interval
         self.local_bind = local_bind
 
@@ -808,7 +830,7 @@ class NetperfDemoRunner(ProcessRunner):
     def __init__(self, test, length, host, bytes=None, **kwargs):
         self.test = test
         self.length = length
-        self.host = host
+        self.host = normalise_host(host)
         self.bytes = bytes
         super(NetperfDemoRunner, self).__init__(**kwargs)
 
@@ -956,6 +978,9 @@ class NetperfDemoRunner(ProcessRunner):
         args.setdefault('cong_control',
                         self.settings.TEST_PARAMETERS.get('tcp_cong_control', ''))
         args.setdefault('socket_timeout', self.settings.SOCKET_TIMEOUT)
+        args.setdefault('send_size',
+                        self.settings.SEND_SIZE[0]
+                        if self.settings.SEND_SIZE else "")
 
         if self.settings.SWAP_UPDOWN:
             if self.test == 'TCP_STREAM':
@@ -963,8 +988,11 @@ class NetperfDemoRunner(ProcessRunner):
             elif self.test == 'TCP_MAERTS':
                 self.test = 'TCP_STREAM'
 
-        if not self.netperf:
-            netperf = util.which('netperf', fail=RunnerCheckError)
+        if self.netperf and not self.remote_host:
+            netperf = self.netperf
+        else:
+            nperf = util.which('netperf', fail=RunnerCheckError,
+                               remote_host=self.remote_host)
 
             # Try to figure out whether this version of netperf supports the -e
             # option for socket timeout on UDP_RR tests, and whether it has been
@@ -975,37 +1003,47 @@ class NetperfDemoRunner(ProcessRunner):
             # stall, so we kill the process almost immediately.
 
             # should be enough time for netperf to output any error messages
-            out, err = self.run_simple([netperf, '-l', '1', '-D', '-0.2',
-                                        '--', '-e', '1'], kill=True)
+            out, err = self.run_simple([nperf, '-l', '1', '-D', '-0.2',
+                                        '--', '-e', '1'], kill=0.1)
 
             if "Demo Mode not configured" in out:
-                raise RunnerCheckError("%s does not support demo mode." % netperf)
+                raise RunnerCheckError("%s does not support demo mode." % nperf)
 
             if "invalid option -- '0'" in err:
                 raise RunnerCheckError(
                     "%s does not support accurate intermediate time reporting. "
-                    "You need netperf v2.6.0 or newer." % netperf)
+                    "You need netperf v2.6.0 or newer." % nperf)
 
-            self.netperf['executable'] = netperf
-            self.netperf['-e'] = False
+            netperf = {'executable': nperf, '-e': False}
 
             if "netperf: invalid option -- 'e'" not in err:
-                self.netperf['-e'] = True
+                netperf['-e'] = True
 
             try:
                 # Sanity check; is /dev/urandom readable? If so, use it to
                 # pre-fill netperf's buffers
-                with open("/dev/urandom", "rb") as fp:
-                    fp.read(1)
-                self.netperf['buffer'] = '-F /dev/urandom'
-            except:
-                self.netperf['buffer'] = ''
+                self.run_simple(['dd', 'if=/dev/urandom', 'of=/dev/null', 'bs=1', 'count=1'], errmsg="Err")
+                netperf['buffer'] = '-F /dev/urandom'
+            except RunnerCheckError:
+                netperf['buffer'] = ''
 
-        args['binary'] = self.netperf['executable']
+            if not self.remote_host:
+                # only cache values if we're not executing the checks on a
+                # remote host (since that might differ on subsequent runner
+                # invocations)
+                self.netperf = netperf
+
+        args['binary'] = netperf['executable']
+        args['buffer'] = netperf['buffer']
         args['output_vars'] = self.output_vars
-        args['buffer'] = self.netperf['buffer']
         args['test'] = self.test
         args['host'] = self.host
+        args['control_host'] = normalise_host(args['control_host'])
+
+        # make sure all unset args are empty strings (and not e.g. None)
+        for k, v in args.items():
+            if v is None:
+                args[k] = ""
 
         if self.bytes:
             args['length'] = -self.bytes
@@ -1014,7 +1052,7 @@ class NetperfDemoRunner(ProcessRunner):
             self.watchdog_timer = self.length + self.delay + 10
 
         if args['marking']:
-            args['marking'] = "-Y {0}".format(args['marking'])
+            args['marking'] = self.parse_marking(args['marking'], "-Y {}", True)
 
         if args['cong_control']:
             args['cong_control'] = "-K {0}".format(args['cong_control'])
@@ -1023,13 +1061,15 @@ class NetperfDemoRunner(ProcessRunner):
             if args[c]:
                 args[c] = "-L {0}".format(args[c])
 
-        if self.test == "UDP_RR" and self.netperf["-e"]:
+        if self.test == "UDP_RR" and netperf["-e"]:
             args['socket_timeout'] = "-e {0:d}".format(args['socket_timeout'])
         else:
             args['socket_timeout'] = ""
 
         if self.test in ("TCP_STREAM", "TCP_MAERTS"):
             args['format'] = "-f m"
+            if args['send_size']:
+                args['send_size'] = "-m {0} -M {0}".format(args['send_size'])
             self.units = 'Mbits/s'
 
             if args['test'] == 'TCP_STREAM' and self.settings.SOCKET_STATS:
@@ -1050,7 +1090,7 @@ class NetperfDemoRunner(ProcessRunner):
                        "{marking} -H {control_host} -p {control_port} " \
                        "-t {test} -l {length:d} {buffer} {format} " \
                        "{control_local_bind} {extra_args} -- " \
-                       "{socket_timeout} {local_bind} -H {host} -k {output_vars} " \
+                       "{socket_timeout} {send_size} {local_bind} -H {host} -k {output_vars} " \
                        "{cong_control} {extra_test_args}".format(**args)
 
         super(NetperfDemoRunner, self).check()
@@ -1140,7 +1180,7 @@ class PingRunner(RegexpRunner):
     transformed_metadata = ('MEAN_VALUE', 'MIN_VALUE', 'MAX_VALUE')
 
     def __init__(self, host, **kwargs):
-        self.host = host
+        self.host = normalise_host(host)
         super(PingRunner, self).__init__(**kwargs)
 
     def check(self):
@@ -1165,8 +1205,8 @@ class PingRunner(RegexpRunner):
         else:
             suffix = ""
 
-        fping = util.which('fping' + suffix) or util.which('fping')
-        ping = util.which('ping' + suffix)
+        fping = util.which('fping' + suffix, remote_host=self.remote_host) or util.which('fping', remote_host=self.remote_host)
+        ping = util.which('ping' + suffix, remote_host=self.remote_host)
         pingargs = []
 
         if fping is not None:
@@ -1202,14 +1242,14 @@ class PingRunner(RegexpRunner):
                         # full test length). This only affects fping v4.0+;
                         # earlier versions will ignore -t when running in -c mode.
                         timeout=length * 2000,
-                        marking="-O {0}".format(marking) if marking else "",
+                        marking=self.parse_marking(marking, "-O {0}"),
                         local_bind=("-I {0}".format(local_bind)
                                     if local_bind else ""),
                         host=host)
 
         if ping is None and ip_version == 6:
             # See if we have a combined ping binary (new versions of iputils)
-            ping6 = util.which("ping")
+            ping6 = util.which("ping", remote_host=self.remote_host)
             out, err = self.run_simple([ping6, '-h'])
             if '-6' in err:
                 ping = ping6
@@ -1237,7 +1277,7 @@ class PingRunner(RegexpRunner):
                     binary=ping,
                     interval=max(0.2, interval),
                     length=length,
-                    marking="-Q {0}".format(marking) if marking else "",
+                    marking=self.parse_marking(marking, "-Q {0}"),
                     local_bind="-I {0}".format(local_bind) if local_bind else "",
                     host=host,
                     pingargs=" ".join(pingargs))
@@ -1270,10 +1310,14 @@ class HttpGetterRunner(RegexpRunner):
 
     def check(self):
 
-        http_getter = util.which('http-getter', fail=RunnerCheckError)
+        http_getter = util.which('http-getter', fail=RunnerCheckError, remote_host=self.remote_host)
 
-        url_file = (self.url_file or self.settings.HTTP_GETTER_URLLIST
-                    or "http://{}/filelist.txt".format(self.settings.HOST))
+        if self.url_file:
+            url_file = self.url_file
+        elif self.settings.HTTP_GETTER_URLLIST:
+            url_file = self.settings.HTTP_GETTER_URLLIST[0]
+        else:
+            url_file = "http://{}/filelist.txt".format(normalise_host(self.settings.HOST))
         dns_servers = self.dns_servers or self.settings.HTTP_GETTER_DNS
         timeout = (self.timeout or self.settings.HTTP_GETTER_TIMEOUT
                    or int(self.length * 1000))
@@ -1328,7 +1372,7 @@ class DashJsRunner(RegexpRunner):
 
         self.length = length
         self.url = url
-        self.host = host
+        self.host = normalise_host(host)
 
     def parse(self, output, error=""):
         result = super(DashJsRunner, self).parse(output, error)
@@ -1382,7 +1426,7 @@ class IperfCsvRunner(ProcessRunner):
     def __init__(self, host, interval, length, ip_version, local_bind=None,
                  no_delay=False, udp=False, bw=None, pktsize=None, marking=None,
                  **kwargs):
-        self.host = host
+        self.host = normalise_host(host)
         self.interval = interval
         self.length = length
         self.ip_version = ip_version
@@ -1456,7 +1500,7 @@ class IperfCsvRunner(ProcessRunner):
     def find_binary(self, host, interval, length, ip_version, local_bind=None,
                     no_delay=False, udp=False, bw=None, pktsize=None,
                     marking=None):
-        iperf = util.which('iperf')
+        iperf = util.which('iperf', remote_host=self.remote_host)
 
         if iperf is not None:
             out, err = self.run_simple([iperf, '-h'])
@@ -1499,7 +1543,7 @@ class IrttRunner(ProcessRunner):
     def __init__(self, host, length, interval=None, ip_version=None,
                  local_bind=None, marking=None, multi_results=False,
                  sample_freq=0, data_size=None, **kwargs):
-        self.host = host
+        self.host = normalise_host(host)
         self.interval = interval
         self.length = length
         self.ip_version = ip_version
@@ -1604,7 +1648,7 @@ class IrttRunner(ProcessRunner):
     def check(self):
 
         if not self._irtt:
-            irtt = util.which('irtt', fail=RunnerCheckError)
+            irtt = util.which('irtt', fail=RunnerCheckError, remote_host=self.remote_host)
 
             out, err = self.run_simple([irtt, 'help', 'client'])
             if re.search('--[a-z]', out) is None:
@@ -1751,7 +1795,7 @@ class SsRunner(ProcessRunner):
                  length, target, **kwargs):
         self.exclude_ports = exclude_ports
         self.ip_version = ip_version
-        self.host = host
+        self.host = normalise_host(host)
         self.interval = interval
         self.length = length
         self.target = target
@@ -1972,7 +2016,7 @@ class TcRunner(ProcessRunner):
         self.interface = interface
         self.interval = interval
         self.length = length
-        self.host = host
+        self.host = normalise_host(host)
         super(TcRunner, self).__init__(**kwargs)
 
     # Normalise time values (seconds, ms, us) to milliseconds and bit values
@@ -2117,7 +2161,7 @@ class CpuStatsRunner(ProcessRunner):
     def __init__(self, interval, length, host='localhost', **kwargs):
         self.interval = interval
         self.length = length
-        self.host = host
+        self.host = normalise_host(host)
         super(CpuStatsRunner, self).__init__(**kwargs)
 
     def parse(self, output, error=""):
@@ -2195,7 +2239,7 @@ class WifiStatsRunner(ProcessRunner):
         self.interface = interface
         self.interval = interval
         self.length = length
-        self.host = host
+        self.host = normalise_host(host)
 
         self.stations = stations or []
         if self.stations in (["all"], ["ALL"]):
@@ -2315,7 +2359,7 @@ class NetstatRunner(ProcessRunner):
     def __init__(self, interval, length, host='localhost', **kwargs):
         self.interval = interval
         self.length = length
-        self.host = host
+        self.host = normalise_host(host)
         super(NetstatRunner, self).__init__(**kwargs)
 
     def parse(self, output, error=""):

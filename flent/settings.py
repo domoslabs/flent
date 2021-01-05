@@ -38,8 +38,8 @@ except ImportError:
 from flent.build_info import VERSION
 from flent.testenv import TestEnvironment, TEST_PATH
 from flent.loggers import get_logger
-from flent.util import FuncAction, Update, keyval, keyval_int, ArgParser, \
-    token_split
+from flent.util import FuncAction, Update, AddHost, append_host, keyval, \
+    keyval_int, keyval_transformer, ArgParser, token_split
 from flent.plotters import add_plotting_args
 from flent import loggers, util, resultset, runners
 
@@ -310,7 +310,7 @@ test_group = parser.add_argument_group(
 
 test_group.add_argument(
     "-H", "--host",
-    action="append", type=unicode, dest="HOSTS", metavar='HOST', default=[],
+    action=AddHost, type=unicode, dest="HOSTS", metavar='HOST', default=[],
     help="Host to connect to for tests. For tests that support it, multiple "
     "hosts can be specified by supplying this option multiple times. Hosts can "
     "also be specified as unqualified arguments; this parameter guarantees that "
@@ -369,6 +369,16 @@ test_group.add_argument(
     "to disable.")
 
 test_group.add_argument(
+    "--send-size",
+    action="append", type=unicode, dest="SEND_SIZE", default=[],
+    help="Send size (in bytes) used for TCP tests. netperf uses the socket "
+    "buffer size by default, which if too large can cause spikes in the "
+    "throughput results. Lowering this value will increase CPU usage but "
+    "also improves the fidelity of the throughput results without having "
+    "to decrease the socket buffer size. Can be specified multiple times, "
+    "with each value corresponding to a stream of a test.")
+
+test_group.add_argument(
     "--test-parameter",
     action=Update, type=keyval, dest="TEST_PARAMETERS", metavar='key=value',
     help="Arbitrary test parameter in key=value format. "
@@ -393,6 +403,20 @@ test_group.add_argument(
     "values to the test data. Requires the 'ss' utility to be present on the "
     "system, and can fail if there are too many simultaneous upload flows; which "
     "is why this option is not enabled by default.")
+
+test_group.add_argument(
+    "--marking-name",
+    action=Update, dest="MARKING_NAMES", metavar='name=hexcode',
+    type=keyval_transformer(keyfunc=lambda x: x.upper(),
+                            valfunc=util.parse_int,
+                            errmsg="Values must be integers"),
+    help="Define a new symbolic name that can be used when specifying flow "
+    "markings using the 'markings' test parameter. This can be used to make "
+    "it easier to specify custom diffserv markings on flows by using symbolic "
+    "names for each marking value instead of the hex codes. Values specified "
+    "here will be used in addition to the common values (AFxx, CSx and EF - "
+    "see man page for full list), and cannot override the built-in names. "
+    "Names will be case-folded when matching.")
 
 plot_group = parser.add_argument_group(
     "Plot configuration",
@@ -435,11 +459,12 @@ tool_group.add_argument(
 
 tool_group.add_argument(
     "--http-getter-urllist",
-    action="store", type=unicode, dest="HTTP_GETTER_URLLIST", metavar="FILENAME",
+    action="append", type=unicode, dest="HTTP_GETTER_URLLIST", metavar="FILENAME",
     help="Filename containing the list of HTTP URLs to get. Can also be a URL, "
     "which will then be downloaded as part of each test iteration. If not "
     "specified, this is set to http://<hostname>/filelist.txt where <hostname> "
-    "is the first test hostname.")
+    "is the first test hostname. Can be specified multiple times, in which case "
+    "one http-getter instance will be run for each URL list.")
 
 tool_group.add_argument(
     "--http-getter-dns-servers",
@@ -522,7 +547,7 @@ class Settings(argparse.Namespace):
 
         if not os.path.exists(filename):
             # Test not found, assume it's a hostname
-            self.HOSTS.append(test_name)
+            append_host(self.HOSTS, test_name)
         elif self.NAME is not None and self.NAME != test_name:
             raise RuntimeError("Multiple test names specified.")
         else:
@@ -537,6 +562,7 @@ class Settings(argparse.Namespace):
                            OLD_RCFILE, self.RCFILE)
             self.RCFILE = OLD_RCFILE
         if os.path.exists(self.RCFILE):
+            logger.debug("Loading rc file %s", self.RCFILE)
 
             config = RawConfigParser()
             config.optionxform = lambda x: x.upper()
@@ -570,6 +596,7 @@ class Settings(argparse.Namespace):
                     vals[k] = False
                 else:
                     raise ValueError("Not a boolean: %s" % v)
+                logger.debug("Set value %s=%s from rc file", k, vals[k])
                 continue
 
             elif t:
@@ -586,6 +613,7 @@ class Settings(argparse.Namespace):
                     vals[k] = [t(i.strip()) for i in token_split(v)]
                 else:
                     vals[k] = val
+                logger.debug("Set value %s=%s from rc file", k, vals[k])
 
         return vals
 
@@ -730,10 +758,12 @@ class Settings(argparse.Namespace):
         if self.DATA_DIR is None:
             self.DATA_DIR = os.path.dirname(self.OUTPUT) or '.'
 
-        # Backwards compatibility for when LOCAL_BIND could only be specified
-        # once - just duplicate the value
+        # For per-stream options, if only specified once duplicate them for each
+        # host so they apply to all flows
         if len(self.LOCAL_BIND) == 1 and len(self.HOSTS) > 1:
             self.LOCAL_BIND *= len(self.HOSTS)
+        if len(self.SEND_SIZE) == 1 and len(self.HOSTS) > 1:
+            self.SEND_SIZE *= len(self.HOSTS)
 
         for k, v in self.BATCH_OVERRIDE.items():
             if not hasattr(v, 'lower'):

@@ -217,6 +217,17 @@ parsing input files.
    can be measured. As such you may need to adjust it if you are experiencing
    latency above the default value. Set to 0 to disable.
 
+.. option:: --send-size=SEND_SIZE
+
+    Send size (in bytes) used for TCP tests. Netperf uses the socket buffer size
+    by default, which if too large can cause spikes in the throughput results.
+    Lowering this value will increase CPU usage but also improves the fidelity
+    of the throughput results without having to decrease the socket buffer size.
+
+    Can be specified multiple times, with each value corresponding to a stream
+    of a test. If only specified once, the same value will be applied to all
+    flows.
+
 .. option:: --test-parameter=key=value
 
    Arbitrary test parameter in key=value format. Key will be case folded to
@@ -243,6 +254,36 @@ parsing input files.
     values to the test data. Requires the 'ss' utility to be present on the
     system, and can fail if there are too many simultaneous upload flows; which
     is why this option is not enabled by default.
+
+.. option:: --marking-name
+
+    Define a new symbolic name that can be used when specifying flow markings
+    using the 'markings' test parameter. This can be used to make it easier to
+    specify custom diffserv markings on flows by using symbolic names for each
+    marking value instead of the hex codes. Values specified here will be used
+    in addition to the common values (listed below), and cannot override the
+    built-in names. Names will be case-folded when matching.
+
+    The list of symbolic markings natively supported, along with their hex
+    expansions, are::
+
+               AF11: 0x28    CS0: 0x00
+               AF12: 0x30    CS1: 0x20
+               AF13: 0x38    CS2: 0x40
+               AF21: 0x48    CS3: 0x60
+               AF22: 0x50    CS4: 0x80
+               AF23: 0x58    CS5: 0xa0
+               AF31: 0x68    CS6: 0xc0
+               AF32: 0x70    CS7: 0xe0
+               AF33: 0x78    EF:  0xb8
+               AF41: 0x88
+               AF42: 0x90
+               AF43: 0x98
+
+    Note that the hexadecimal values denote the value of the full ToS byte
+    (including the two ECN bits), so they need to be right-shifted by two bits
+    to get the corresponding diffserv code points.
+
 
 Plot configuration options
 --------------------------

@@ -1,13 +1,21 @@
 language: python
 script: make test_long
 dist: xenial
-sudo: true
-matrix:
+os: linux
+jobs:
   exclude:
     - python: "3.5"
       env: MATPLOTLIB_VERSION=3.1.* PYQT=PyQt5
     - python: "3.5"
       env: MATPLOTLIB_VERSION=3.1.* PYQT=PySide2
+    - python: "3.5"
+      env: MATPLOTLIB_VERSION=3.2.* PYQT=PyQt5
+    - python: "3.5"
+      env: MATPLOTLIB_VERSION=3.2.* PYQT=PySide2
+    - python: "3.5"
+      env: MATPLOTLIB_VERSION=3.3.* PYQT=PyQt5
+    - python: "3.5"
+      env: MATPLOTLIB_VERSION=3.3.* PYQT=PySide2
     - python: "3.8"
       env: MATPLOTLIB_VERSION=1.5.*
     - python: "3.8"
@@ -16,15 +24,20 @@ matrix:
       env: MATPLOTLIB_VERSION=2.1.*
     - python: "3.8"
       env: MATPLOTLIB_VERSION=2.2.*
-    - python: "3.8"
-      env: MATPLOTLIB_VERSION=3.0.* PYQT=PySide2
-    - python: "3.8"
-      env: MATPLOTLIB_VERSION=3.1.* PYQT=PySide2
+    - python: "3.9"
+      env: MATPLOTLIB_VERSION=1.5.*
+    - python: "3.9"
+      env: MATPLOTLIB_VERSION=2.0.*
+    - python: "3.9"
+      env: MATPLOTLIB_VERSION=2.1.*
+    - python: "3.9"
+      env: MATPLOTLIB_VERSION=2.2.*
 python:
   - "3.5"
   - "3.6"
   - "3.7"
   - "3.8"
+  - "3.9"
 env:
   - MATPLOTLIB_VERSION=1.5.*
   - MATPLOTLIB_VERSION=2.0.*
@@ -34,9 +47,26 @@ env:
   - MATPLOTLIB_VERSION=3.0.* PYQT=PySide2
   - MATPLOTLIB_VERSION=3.1.* PYQT=PyQt5
   - MATPLOTLIB_VERSION=3.1.* PYQT=PySide2
+  - MATPLOTLIB_VERSION=3.2.* PYQT=PyQt5
+  - MATPLOTLIB_VERSION=3.2.* PYQT=PySide2
+  - MATPLOTLIB_VERSION=3.3.* PYQT=PyQt5
+  - MATPLOTLIB_VERSION=3.3.* PYQT=PySide2
 addons:
   apt:
     packages:
+    - libxcb-icccm4
+    - libxcb-image0
+    - libxcb-keysyms1
+    - libxcb-randr0
+    - libxcb-render-util0
+    - libxcb-render0
+    - libxcb-shape0
+    - libxcb-shm0
+    - libxcb-sync1
+    - libxcb-util1
+    - libxcb-xfixes0
+    - libxcb-xinerama0
+    - libxcb-xkb1
     - libxkbcommon-x11-0
 services:
   - xvfb

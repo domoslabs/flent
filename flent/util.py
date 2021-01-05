@@ -28,6 +28,7 @@ import re
 import shlex
 import socket
 import time
+import subprocess
 
 from copy import copy
 from calendar import timegm
@@ -36,6 +37,7 @@ from math import log10, exp, sqrt
 
 from flent.loggers import get_logger
 
+MULTIHOST_SEP = '//'
 ENCODING = "UTF-8"
 try:
     import locale
@@ -127,6 +129,18 @@ def parse_date(timestring, min_t=None, offset=None):
         return dt - offset, offset
 
 
+def parse_int(val):
+    try:
+        try:
+            return int(val)
+        except ValueError:
+            if val.strip().startswith("0x"):
+                return int(val, 16)
+            raise
+    except (ValueError, AttributeError):
+        raise ValueError("Invalid integer value: %s" % val)
+
+
 def clean_path(path, allow_dirs=False):
     if allow_dirs:
         return re.sub("[^A-Za-z0-9_/-]", "_", path)
@@ -167,12 +181,24 @@ def is_executable(filename):
     return os.path.isfile(filename) and os.access(filename, os.X_OK)
 
 
-def which(executable, fail=None):
+def which(executable, fail=None, remote_host=None):
     pathname, filename = os.path.split(executable)
     if pathname:
         if is_executable(executable):
             logger.debug("which: %s is a full path and executable", executable)
             return executable
+    elif remote_host:
+        logger.debug("running 'which' for binary '%s' on host '%s'",
+                     executable, remote_host)
+        try:
+            output = subprocess.check_output(['ssh', remote_host,
+                                              'which {}'.format(executable)],
+                                             timeout=1)
+            output = output.decode(ENCODING).strip()
+            logger.debug("Got path '%s' for '%s' on '%s'", output, executable, remote_host)
+            return output
+        except subprocess.CalledProcessError:
+            pass
     else:
         for path in [i.strip('""') for i in os.environ["PATH"].split(os.pathsep)]:
             filename = os.path.join(path, executable)
@@ -199,8 +225,13 @@ def path_components(path):
         folders.insert(0, path)
     return folders
 
+def normalise_host(hostname):
+    if hostname and MULTIHOST_SEP in hostname:
+        return hostname.split(MULTIHOST_SEP, 1)[0]
+    return hostname
 
 def lookup_host(hostname, version=None):
+    hostname = normalise_host(hostname)
     logger.debug("Looking up hostname '%s'.", hostname)
     if version == 4:
         version = socket.AF_INET
@@ -427,6 +458,44 @@ class Update(argparse.Action):
         getattr(namespace, self.dest).update(values)
 
 
+def _copy_items(items):
+    if items is None:
+        return []
+    # The copy module is used only in the 'append' and 'append_const'
+    # actions, and it is needed only when the default value isn't a list.
+    # Delay its import for speeding up the common case.
+    if type(items) is list:
+        return items[:]
+    return copy(items)
+
+def append_host(items, new_host):
+    host, suffix, idx = (None, None, None)
+    for k, v in enumerate(items):
+        if MULTIHOST_SEP in v:
+            h, s = v.split(MULTIHOST_SEP, 1)
+            s = int(s)
+        else:
+            h, s = (v, 1)
+        if h == new_host:
+            host, suffix, idx = h, s, k
+    if host:
+        new_host = MULTIHOST_SEP.join((new_host, str(suffix+1)))
+        items[idx] = MULTIHOST_SEP.join((host, str(suffix)))
+    items.append(new_host)
+
+class AddHost(argparse._AppendAction):
+
+    def __init__(self, *args, **kwargs):
+        if 'default' not in kwargs:
+            kwargs['default'] = []
+        super(AddHost, self).__init__(*args, **kwargs)
+
+    def __call__(self, parser, namespace, new_host, option_string=None):
+        items = getattr(namespace, self.dest, None)
+        items = _copy_items(items)
+        append_host(items, new_host)
+        setattr(namespace, self.dest, items)
+
 def float_pair(value):
     try:
         if "," not in value:
@@ -459,12 +528,44 @@ def keyval(value):
                 "Invalid value '%s' (missing =)" % p)
     return ret
 
+def noop(x):
+    return x
 
-def keyval_int(value):
-    try:
-        return {int(k): v for k, v in keyval(value).items()}
-    except ValueError:
-        raise argparse.ArgumentTypeError("Keys must be integers.")
+def todict(k, v):
+    return dict(k=v)
+
+def rangedict(key, value):
+    ret = {}
+    for k in key.split(","):
+        if '-' in k:
+            s, e = (int(i) for i in k.split("-", 1))
+            if not s < e:
+                raise ValueError
+            for i in range(s, e+1):
+                ret[i] = value
+        elif k == '*':
+            ret['*'] = value
+        else:
+            ret[int(k)] = value
+    return ret
+
+def keyval_pair_transformer(pairfunc=todict, errmsg="Parse error"):
+    def typefunc(value):
+        ret = {}
+        try:
+            for k, v in keyval(value).items():
+                ret.update(pairfunc(k, v))
+            return ret
+        except ValueError:
+            raise argparse.ArgumentTypeError(errmsg)
+    return typefunc
+
+def keyval_transformer(keyfunc=noop, valfunc=noop, errmsg="Parse error"):
+    return keyval_pair_transformer(pairfunc=lambda k, v: {keyfunc(k): valfunc(v)},
+                                   errmsg=errmsg)
+
+keyval_int = keyval_pair_transformer(pairfunc=rangedict,
+                                     errmsg="Keys must be integers.")
 
 
 def comma_list(value):

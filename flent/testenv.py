@@ -27,7 +27,7 @@ from collections import OrderedDict
 from copy import deepcopy
 from itertools import cycle, islice
 
-from flent.util import Glob, token_split
+from flent.util import Glob, token_split, parse_int
 from flent.build_info import DATA_DIR
 from flent.loggers import get_logger
 
@@ -49,7 +49,7 @@ try:
 except ImportError:
     from itertools import izip_longest as zip_longest
 
-SPECIAL_PARAM_NAMES = ['upload_streams', 'download_streams']
+SPECIAL_PARAM_NAMES = ['upload_streams', 'download_streams', 'bidir_streams']
 SPECIAL_PARAM_MAP = {'num_cpus': CPU_COUNT}
 
 # Test parameters that will be parsed and from test parameters and passed to the
@@ -57,7 +57,12 @@ SPECIAL_PARAM_MAP = {'num_cpus': CPU_COUNT}
 # in the code below
 STREAM_CONFIG_PARAM_NAMES = ['label', 'ping_label', 'marking',
                              'control_host', 'local_bind', 'cc_algo',
-                             'udp_bandwidth', 'udp_pktsize']
+                             'udp_bandwidth', 'udp_pktsize', 'send_size']
+
+# Mapping of test parameters that will be picked up from the global settings if
+# they are not set
+GLOBAL_TEST_PARAMS_MAP = {'local_binds': 'LOCAL_BIND',
+                          'send_sizes': 'SEND_SIZE'}
 
 class _no_default():
     pass
@@ -90,6 +95,7 @@ class TestEnvironment(object):
             'parse_int': self.parse_int,
             'zip_longest': zip_longest,
             'for_stream_config': self.for_stream_config,
+            'test_error': self.test_error,
         })
 
         self.informational = informational
@@ -106,8 +112,9 @@ class TestEnvironment(object):
                 self.env['HOSTS'] = self.orig_hosts
             return self.expand_duplicates(self.env)
         except Exception as e:
+            testn = os.path.basename(filename).replace(".conf", "")
             raise RuntimeError(
-                "Unable to read test config file '%s': '%s'." % (filename, e))
+                "Error loading test '%s': %s." % (testn, e))
 
     def replace_testparms(self, env):
         if 'TEST_PARAMETERS' not in env:
@@ -155,6 +162,10 @@ class TestEnvironment(object):
                 ret = cast(ret)
             return ret
         except KeyError:
+            if name in GLOBAL_TEST_PARAMS_MAP:
+                ret = self.env[GLOBAL_TEST_PARAMS_MAP[name]]
+                if ret:
+                    return ret
             if default is not _no_default:
                 return default
             if self.informational:
@@ -173,13 +184,8 @@ class TestEnvironment(object):
 
     def parse_int(self, val):
         try:
-            try:
-                return int(val)
-            except ValueError:
-                if val.startswith("0x"):
-                    return int(val, 16)
-                raise
-        except (ValueError, AttributeError):
+            return parse_int(val)
+        except ValueError:
             raise RuntimeError("Invalid integer value: %s" % val)
 
     def require_host_count(self, count):
@@ -198,6 +204,10 @@ class TestEnvironment(object):
             else:
                 raise RuntimeError("Need %d hosts, only %d specified" %
                                    (count, len(self.env['HOSTS'])))
+
+    def test_error(self, msg):
+        if not self.informational:
+            raise RuntimeError(msg)
 
     def for_stream_config(self, func, n=None):
         if n is None:
