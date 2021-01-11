@@ -1562,7 +1562,7 @@ class IrttRunner(ProcessRunner):
         return value/10**9
 
     def parse(self, output, error=""):
-        result = {'rtt': [], 'delay': [], 'jitter': [], 'loss': []}
+        result = {'rtt': [], 'delay': [], 'delay_down': [], 'jitter': [], 'loss': []}
         raw_values = []
         try:
             data = json.loads(output)
@@ -1619,6 +1619,7 @@ class IrttRunner(ProcessRunner):
                         result['rtt'].append([dp['t'], dp['val']])
                         # delay and jitter are for compatibility with the D-ITG
                         # VoIP mode
+                        result['delay_down'].append([dp['t'], dp['owd_down']])
                         result['delay'].append([dp['t'], dp['owd_up']])
                         result['jitter'].append([dp['t'],
                                                  abs(dp.get('ipdv_up', 0))])
@@ -1733,8 +1734,8 @@ class VoipRunner(DelegatingRunner):
                                   sample_freq=self.runner_args['interval'],
                                   # interval and data size to emulate G711 VoIP
                                   # ref.: https://wiki.wireshark.org/SampleCaptures?action=AttachFile&do=get&target=SIP_CALL_RTP_G711
-                                  interval=0.02,
-                                  data_size=172))
+                                  interval=0.01,
+                                  data_size=1000))
             logger.debug("VoIP test: Using irtt")
         except RunnerCheckError as e:
             logger.debug("VoIP test: Cannot use irtt runner (%s). "
