@@ -21,6 +21,32 @@ def main(argv):
         elif opt in ("-o", "--ofile"):
             outputfile = arg
 
+
+    fields = [
+            ["BATCH_TITLE"],
+            ["SERIES_META", "TCP download sum","MEAN_VALUE"],
+            ["SERIES_META", "VoIP","PACKET_LOSS_RATE"],
+            ["SERIES_META", "VoIP","RTT_MEAN"],
+            ["SERIES_META", "VoIP","RTT_PERCENTILE90"],
+            ["SERIES_META", "VoIP","RTT_PERCENTILE99"],
+            ["SERIES_META", "Ping (ms) UDP BE","RTT_MEAN"],
+            ["SERIES_META", "Ping (ms) UDP BE","RTT_PERCENTILE90"],
+            ["SERIES_META", "Ping (ms) UDP BE","RTT_PERCENTILE99"],
+            ["SERIES_META", "Ping (ms) UDP BK","RTT_MEAN"],
+            ["SERIES_META", "Ping (ms) UDP BK","RTT_PERCENTILE90"],
+            ["SERIES_META", "Ping (ms) UDP BK","RTT_PERCENTILE99"],
+            ["SERIES_META", "Ping (ms) UDP BK","RTT_MEAN"],
+            ["SERIES_META", "Ping (ms) UDP VI","RTT_PERCENTILE90"],
+            ["SERIES_META", "Ping (ms) UDP VI","RTT_PERCENTILE99"],
+            ["SERIES_META", "Ping (ms) UDP VI","RTT_MEAN"],
+            ["SERIES_META", "Ping (ms) UDP VO","RTT_PERCENTILE90"],
+            ["SERIES_META", "Ping (ms) UDP VO","RTT_PERCENTILE99"]]
+    # print csv header
+    header = ""
+    for field in fields:
+        header = header + get_name(field)+","
+    header = header[:-1]
+    print(header)
     for subdir, dirs, files in os.walk(inputfile):
         for file in files:
             #print os.path.join(subdir, file)
@@ -31,15 +57,25 @@ def main(argv):
                     data = f.read()
                     #print(data)
                     flent_data = json.loads(data)
-                    smeta = flent_data["metadata"]["SERIES_META"]
-                    print(os.path.basename(f.name) ,end =",")
-                    print(smeta["Ping (ms) avg"]["MEAN_VALUE"] , end =",")
-                    print(smeta["TCP download sum"]["MEAN_VALUE"],end =",")
-                    #print(smeta["TCP upload sum"]["MEAN_VALUE"],end =",")
-                    print(smeta["VoIP"]["PACKET_LOSS_RATE"],end =",")
-                    print(smeta["VoIP"]["OWD_DOWN_MEAN"],end =",")
-                    print(smeta["VoIP"]["OWD_UP_MEAN"],end =",")
-                    print(smeta["VoIP"]["RTT_MEAN"])
-    
+                    metadata = flent_data["metadata"]
+                    csv_line = ""
+                    for field in fields:
+                        csv_line = csv_line + str(get_value(field,metadata)) + ","
+                    csv_line = csv_line[:-1]
+                    print(csv_line)
+
+def get_name(field):
+    o = ""
+    for subfield in field:
+        if subfield != "SERIES_META":
+            o = o + subfield + " "
+    return o
+
+def get_value(field, metadata):
+    o = metadata
+    for subfield in field:
+        o = o[subfield]
+    return o
+
 if __name__ == "__main__":
     main(sys.argv[1:])

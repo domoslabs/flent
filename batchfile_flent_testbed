@@ -6,7 +6,7 @@
 
 [Command::move_data]    #Command used to move the csv output to appropriate folder
 type=post
-exec = mv ${batch_time}-${batch_name}-data.csv batch-${batch_time}-${batch_title}/${batch_name}
+exec = mv ${batch_time}-${batch_name}-data.csv ${batch_title}-${batch_time}/${batch_name}
 
 #Setting up your own Batch
 #[Batch::name_of_batch] - note that this is the name used to call the batch when running flent with -B
@@ -23,11 +23,11 @@ extended_metadata = yes
 debug_error = yes
 debug_log = yes
 title = ${batch_title}
-output_path = batch-${batch_time}-${batch_title}/${batch_name}
+filename_extra = ${batch_title}
+output_path = ${batch_title}-${batch_time}/${batch_name}
 ip_version = 4
-length = 170
-hosts = 192.168.1.214     #Edit this ip to your local server ip before running
-batch_title = testbed_v0_1
+length = 110
+hosts = 192.168.1.162     #Edit this ip to your local server ip before running
 repetitions = 1
 pause = 5
 abstract = yes
@@ -109,7 +109,7 @@ commands = move_data
 
 [Batch::rrul_voip_down]
 inherits = global
-remote_hosts = 0 = soman@192.168.2.168; 1 = soman@192.168.2.168; 7 = soman@192.168.2.168
+remote_hosts = 0 = karl@192.168.2.164; 1 = karl@192.168.2.164
 test_name = voip-rrul-down
 disabled = no
 format=csv

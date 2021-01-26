@@ -124,6 +124,27 @@ MARKING_MAP = {'AF11': 0x28,
                'CS7':  0xe0,
                'EF':   0xb8}
 
+def percentile(N, percent, key=lambda x:x):
+    """
+    Find the percentile of a list of values.
+
+    @parameter N - is a list of values. Note N MUST BE already sorted.
+    @parameter percent - a float value from 0.0 to 1.0.
+    @parameter key - optional key function to compute value from each element of N.
+
+    @return - the percentile of the values
+    """
+    if not N:
+        return None
+    k = (len(N)-1) * percent
+    f = math.floor(k)
+    c = math.ceil(k)
+    if f == c:
+        return key(N[int(k)])
+    d0 = key(N[int(f)]) * (c-k)
+    d1 = key(N[int(c)]) * (k-f)
+    return d0+d1
+
 
 class RunnerBase(object):
 
@@ -1641,7 +1662,12 @@ class IrttRunner(ProcessRunner):
                 continue
 
         self.raw_values = raw_values
-
+        rtts = []
+        for o in raw_values:
+            if 'val' in o:
+                rtts.append(o['val'])
+        self.metadata['RTT_PERCENTILE90'] = percentile(rtts, 0.9)
+        self.metadata['RTT_PERCENTILE99'] = percentile(rtts, 0.99)
         if self.multi_results:
             return result
         return result['rtt']
@@ -2489,6 +2515,15 @@ class AverageRunner(ComputingRunner):
 
     def compute(self, values):
         return math.fsum(values) / len(values)
+
+class PercentileRunner(ComputingRunner):
+    command = "Percentile (computed)"
+    def __init__(self, percentile=90, **kwargs):
+        super(PercentileRunner, self).__init__(**kwargs)
+        self._percentile = percentile
+
+    def compute(self, values):
+        return percentile(values, self._percentile)
 
 
 class SmoothAverageRunner(ComputingRunner):

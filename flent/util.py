@@ -193,7 +193,7 @@ def which(executable, fail=None, remote_host=None):
         try:
             output = subprocess.check_output(['ssh', remote_host,
                                               'which {}'.format(executable)],
-                                             timeout=1)
+                                             timeout=5)
             output = output.decode(ENCODING).strip()
             logger.debug("Got path '%s' for '%s' on '%s'", output, executable, remote_host)
             return output
