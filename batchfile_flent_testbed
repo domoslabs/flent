@@ -2,7 +2,7 @@
 #[Command::name_of_command]
 #type = pre/post - determines if the command is executed before or after the batch
 #exec = insert you command here (i.e., ls, echo "starting test", etc.)
-essential = yes/no - determines if command must execute correctly or not
+#essential = yes/no - determines if command must execute correctly or not
 
 [Command::move_data]    #Command used to move the csv output to appropriate folder
 type=post
@@ -25,8 +25,8 @@ debug_log = yes
 title = ${batch_title}
 output_path = batch-${batch_time}-${batch_title}/${batch_name}
 ip_version = 4
-length = 30
-hosts = 192.168.11.176     #Edit this ip to your local server ip before running
+length = 170
+hosts = 192.168.1.214     #Edit this ip to your local server ip before running
 batch_title = testbed_v0_1
 repetitions = 1
 pause = 5
@@ -99,11 +99,19 @@ commands = move_data
 
 [Batch::rrul_packetloss]
 inherits = global
-test_parameters=download_streams = 1; upload_streams = 1;
+remote_hosts = 0 = soman@192.168.2.168; 1 = soman@192.168.2.168; 6 = soman@192.168.2.168; 7 = soman@192.168.2.168; 13 = soman@192.168.2.168
+test_parameters=download_streams = 1; upload_streams = 0;
 test_name = voip-rrul
 disabled = no
 format=csv
 output = ${batch_time}-${batch_name}-data.csv
 commands = move_data
 
-
+[Batch::rrul_voip_down]
+inherits = global
+remote_hosts = 0 = soman@192.168.2.168; 1 = soman@192.168.2.168; 7 = soman@192.168.2.168
+test_name = voip-rrul-down
+disabled = no
+format=csv
+output = ${batch_time}-${batch_name}-data.csv
+commands = move_data
